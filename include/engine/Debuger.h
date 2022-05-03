@@ -4,6 +4,8 @@
 
 #ifndef BOUNCEBALL_DEBUGER_H
 #define BOUNCEBALL_DEBUGER_H
+#include <exception>
+#include <string>
 
 namespace Engine::Debug
 {
@@ -26,8 +28,18 @@ namespace Engine::Debug
 
     void SetDebugLevelMask(LogLevelMask mask);
     bool HasDebugLevel(LogLevel level);
+
     void Log(const char* text);
+    void Log(const std::string* text);
+    void Log(const std::exception* e);
+    void Log(std::string text);
+    void Log(std::exception e);
+
     void Log(LogLevel level, const char* text);
+    void Log(LogLevel level, const std::string* text);
+    void Log(LogLevel level, const std::exception* e);
+    void Log(LogLevel level, std::string text);
+    void Log(LogLevel level, std::exception e);
 }
 
 #endif //BOUNCEBALL_DEBUGER_H

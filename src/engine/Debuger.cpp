@@ -3,8 +3,8 @@
 //
 
 #include "engine/Debuger.h"
-#include "iostream"
-#include "time.h"
+#include <iostream>
+#include <ctime>
 
 namespace Engine::Debug
 {
@@ -22,7 +22,30 @@ namespace Engine::Debug
 
     void Log(const char* text)
     {
+        if (text == nullptr) return;
         Log(Info, text);
+    }
+
+    void Log(const std::string* text)
+    {
+        if (text == nullptr) return;
+        Log(Info, text->c_str());
+    }
+
+    void Log(const std::exception* e)
+    {
+        if (e == nullptr) return;
+        Log(Error, e->what());
+    }
+
+    void Log(std::string text)
+    {
+        Log(Info, text.c_str());
+    }
+
+    void Log(std::exception e)
+    {
+        Log(Error, e.what());
     }
 
     void Log(LogLevel level, const char* text)
@@ -58,5 +81,27 @@ namespace Engine::Debug
         tm *ltm = localtime(&now);
         strftime(buf, 80, "%H:%M:%S", ltm);
         std::cout << buf << " | " << levelChar << " : " << text << std::endl;
+    }
+
+    void Log(LogLevel level, const std::string* text)
+    {
+        if (text == nullptr) return;
+        Log(level, text->c_str());
+    }
+
+    void Log(LogLevel level, const std::exception* e)
+    {
+        if (e == nullptr) return;
+        Log(level, e->what());
+    }
+
+    void Log(LogLevel level, std::string text)
+    {
+        Log(level, text.c_str());
+    }
+
+    void Log(LogLevel level, std::exception e)
+    {
+        Log(level, e.what());
     }
 }

@@ -12,4 +12,8 @@
 
 // Engine
 #include "engine/Debuger.h"
+#include "engine/Application.h"
+#include "engine/PlayerTime.h"
+#include "engine/PlayerLoop.h"
+
 #endif //BOUNCEBALL_MAIN_H

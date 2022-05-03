@@ -7,12 +7,14 @@
 
 namespace Engine::PlayerTime
 {
+    typedef unsigned long int FrameID;
+
     double GetGameStartupTime();
     double GetDeltaTime(bool unscaled);
     double GetFixedDeltaTime(bool unscaled);
     double GetTimeScale();
     void SetTimeScale(double scaleFactor);
-    long int GetCurrentFrameCount();
+    FrameID GetCurrentFrameCount();
 }
 
 #endif //BOUNCEBALL_PLAYERTIME_H

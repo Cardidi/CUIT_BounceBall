@@ -9,7 +9,7 @@ namespace Engine::PlayerLoop
 {
     enum class PlayerLoopTiming
     {
-        GameInit = 0,
+        IDLE = 0,
 
         PRE_NewFrame = 1,
         NewFrame = 2,
@@ -39,8 +39,6 @@ namespace Engine::PlayerLoop
     PlayerLoopTiming GetCurrentTiming();
     bool AddCallback(PlayerLoopCallback callback);
     bool RemoveCallback(PlayerLoopCallback callback);
-    bool GetFramePause();
-    bool SetFramePause();
 }
 
 #endif //BOUNCEBALL_PLAYERLOOP_H
