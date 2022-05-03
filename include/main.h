@@ -12,6 +12,7 @@
 
 // Engine
 #include "engine/Debuger.h"
+#include "engine/Types.h"
 #include "engine/Application.h"
 #include "engine/PlayerTime.h"
 #include "engine/PlayerLoop.h"

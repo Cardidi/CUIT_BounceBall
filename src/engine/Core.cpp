@@ -19,6 +19,13 @@ using Engine::Debug::LogLevel;
 
 namespace Engine::PlayerTime
 {
+    double _targetFrameTime = 0;
+    double _currentFixedTime = 0;
+    int _fixedUpdateCounter = 0;
+    double _frameTime = 0;
+    double _updatingTime = 0;
+    bool _skipUpdate = false;
+
     double _fixedDeltaTime;
     double _deltaTime;
     double _scaleFactor, _pScaleFactor;
@@ -40,13 +47,23 @@ namespace Engine::PlayerTime
         _scaleFactor = _pScaleFactor = 1.0f;
     }
 
-    void OnNewFrame()
+    static void ResetTimer()
     {
-        _scaleFactor = _pScaleFactor;
-        _frame++;
+        _targetFrameTime = glfwGetTime();
+        _currentFixedTime = _targetFrameTime;
+        _frame = 0;
+        _skipUpdate = false;
+        _frameTime = 0;
+        _fixedUpdateCounter = 0;
+        _updatingTime = 0;
     }
 
-    double GetGameStartupTime()
+    static void OnNewFrame()
+    {
+        _scaleFactor = _pScaleFactor;
+    }
+
+    inline double GetGameTimeFromStartup()
     {
         return glfwGetTime();
     }
@@ -78,6 +95,36 @@ namespace Engine::PlayerTime
     FrameID GetCurrentFrameCount()
     {
         return _frame;
+    }
+
+    double GetFixedUpdateTimer()
+    {
+        return _fixedDeltaTime;
+    }
+
+    double GetTargetUpdateTimer()
+    {
+        return _targetFrameTime;
+    }
+
+    int GetFixedUpdateCountLastFrame()
+    {
+        return _fixedUpdateCounter;
+    }
+
+    double GetFrameTimeLastFrame()
+    {
+        return _frameTime;
+    }
+
+    double GetUpdateTimeLastFrame()
+    {
+        return _updatingTime;
+    }
+
+    bool GetSkipUpdateLastFrame()
+    {
+        return _skipUpdate;
     }
 }
 
@@ -128,13 +175,23 @@ namespace Engine::PlayerLoop
 
     void SingleFrameLoop()
     {
+        using Engine::PlayerLoop::PlayerLoopTiming;
         using Engine::PlayerTime::_fixedDeltaTime;
         using Engine::PlayerTime::_deltaTime;
-
-        double latestUpdate = glfwGetTime() + _deltaTime;
-        double skipUpdate = latestUpdate + _deltaTime;
+        using Engine::PlayerTime::_targetFrameTime;
+        using Engine::PlayerTime::_currentFixedTime;
+        using Engine::PlayerTime::_skipUpdate;
+        using Engine::PlayerTime::_updatingTime;
+        using Engine::PlayerTime::_frameTime;
+        using Engine::PlayerTime::_fixedUpdateCounter;
+        using Engine::PlayerTime::_frame;
 
         // Frame Init
+        _targetFrameTime += _deltaTime;
+        double frameStart = glfwGetTime();
+        _frame++;
+
+        // Frame Start
         DoUpdateEvent(PlayerLoopTiming::IDLE);
 
         Engine::PlayerTime::OnNewFrame();
@@ -142,47 +199,48 @@ namespace Engine::PlayerLoop
         DoUpdateEvent(PlayerLoopTiming::NewFrame);
         DoUpdateEvent(PlayerLoopTiming::POST_NewFrame);
 
-        while (true)
+        int c1 = 0;
+        while (_currentFixedTime < _targetFrameTime)
         {
+            c1++;
             // Fixed Update
-            double latestFixedUpdate = glfwGetTime() + _fixedDeltaTime;
-
             DoUpdateEvent(PlayerLoopTiming::PRE_FixedUpdate);
             DoUpdateEvent(PlayerLoopTiming::FixedUpdate);
             DoUpdateEvent(PlayerLoopTiming::POST_FixedUpdate);
 
-            while (glfwGetTime() < latestFixedUpdate); // Wait for end of fixed update
-            if (glfwGetTime() >= latestUpdate) break; // If enter update
+            _currentFixedTime += _fixedDeltaTime;
         }
 
-        bool skiped = false;
-        if (glfwGetTime() < skipUpdate)
+        bool sk = false;
+        if (glfwGetTime() < _targetFrameTime)
         {
             // Update
             DoUpdateEvent(PlayerLoopTiming::PRE_Update);
             DoUpdateEvent(PlayerLoopTiming::Update);
             DoUpdateEvent(PlayerLoopTiming::POST_Update);
 
-            if (glfwGetTime() < skipUpdate)
+            if (glfwGetTime() < _targetFrameTime)
             {
                 // Render
                 DoUpdateEvent(PlayerLoopTiming::PRE_RenderUpdate);
                 DoUpdateEvent(PlayerLoopTiming::RenderUpdate);
                 DoUpdateEvent(PlayerLoopTiming::POST_RenderUpdate);
-            } else skiped = true;
-        } else skiped = true;
-
-        if (skiped)
-        {
-            std::stringstream ss;
-            ss << "Frame " << PlayerTime::GetCurrentFrameCount() << " Update was skipped";
-            Debug::Log(Debug::Debug, ss.str());
-        }
+            } else sk = true;
+        } else sk = true;
 
         // End Frame
         DoUpdateEvent(PlayerLoopTiming::PRE_EndFrame);
         DoUpdateEvent(PlayerLoopTiming::EndFrame);
         DoUpdateEvent(PlayerLoopTiming::POST_EndFrame);
+
+        double fin = glfwGetTime();
+        _updatingTime = fin - frameStart;
+
+        while (fin < _targetFrameTime) fin = glfwGetTime();
+
+        _frameTime = fin - frameStart;
+        _skipUpdate = sk;
+        _fixedUpdateCounter = c1;
 
         DoUpdateEvent(PlayerLoopTiming::BetweenFrame);
     }
@@ -194,6 +252,8 @@ namespace Engine::Application
     bool running = false;
     bool _exitNextFrame = false;
     bool _exitCode = 0;
+    GLFWwindow* window;
+
     std::string appExecPath;
     std::vector<std::string> appComLin;
 
@@ -206,6 +266,26 @@ namespace Engine::Application
     {
         _exitNextFrame = true;
         _exitCode = code;
+    }
+
+    void glUpdateCallback(PlayerLoop::PlayerLoopTiming timing)
+    {
+        if (timing == PlayerLoop::PlayerLoopTiming::NewFrame)
+        {
+            float delta = PlayerTime::GetTargetUpdateTimer() - (int) PlayerTime::GetTargetUpdateTimer();
+            glClearColor(delta, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+
+        if (timing == PlayerLoop::PlayerLoopTiming::PRE_RenderUpdate)
+        {
+            glfwPollEvents();
+        }
+
+        if (timing == PlayerLoop::PlayerLoopTiming::BetweenFrame)
+        {
+            glfwSwapBuffers(window);
+        }
     }
 
     int Boot(struct Setting* setting, int argc, char** argv)
@@ -236,7 +316,7 @@ namespace Engine::Application
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        GLFWwindow* window = glfwCreateWindow
+        window = glfwCreateWindow
                 (setting->Window_Init_Width,setting->Window_Init_Height,
                  setting->Window_Init_GameTitle.c_str(),NULL, NULL);
         if (window == NULL)
@@ -254,6 +334,7 @@ namespace Engine::Application
             glfwTerminate();
             return -1;
         }
+        Engine::PlayerLoop::AddCallback(glUpdateCallback);
 
         // Load Game Systems
         Log("Initialize Game Subsystems");
@@ -264,23 +345,30 @@ namespace Engine::Application
         if (setting->CreateGameEvent != nullptr) setting->CreateGameEvent();
 
         Log("-- Start Render Loop --");
+
+        Engine::PlayerTime::ResetTimer();
+        double timeCounter = PlayerTime::GetGameTimeFromStartup();
+        int frameCounter = PlayerTime::GetCurrentFrameCount();
         while (!glfwWindowShouldClose(window) && !_exitNextFrame)
         {
-            glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-
             Engine::PlayerLoop::SingleFrameLoop();
-
-            glfwSwapBuffers(window);
-            glfwPollEvents();
+            if (PlayerTime::GetGameTimeFromStartup() - timeCounter >= 1)
+            {
+                std::stringstream ss;
+                ss << "Frame " << PlayerTime::GetCurrentFrameCount() << " - FPS: " << PlayerTime::GetCurrentFrameCount() - frameCounter;
+                timeCounter = PlayerTime::GetGameTimeFromStartup();
+                frameCounter = PlayerTime::GetCurrentFrameCount();
+                Log(Debug::Debug, ss.str());
+            }
         }
-        Log("-- End Render Loop --");
 
+        Log("-- End Render Loop --");
 
         Log("Call Game Destroy Callback");
         if (setting->DestroyGameEvent != nullptr) setting->DestroyGameEvent();
 
         Log("Terminate GLFW");
+        Engine::PlayerLoop::RemoveCallback(glUpdateCallback);
         glfwTerminate();
         running = false;
         return _exitCode;
