@@ -14,19 +14,21 @@ namespace Engine::Application
     struct Setting
     {
         double Time_fixedDeltaTime = 0.002;
-        double Time_deltaTime = 0.017;
+        double Time_deltaTime = 0.0167;
         std::string Window_Init_GameTitle = "OpenGL Window";
         bool Window_KeepInitRatio = true;
         unsigned int Window_Init_Width = 800;
         unsigned int Window_Init_Height = 600;
+        bool Tool_FPSCounter = true;
 
         ApplicationEventHook CreateGameEvent = nullptr;
         ApplicationEventHook DestroyGameEvent = nullptr;
     };
 
+    Setting& GetSetting();
+    int Boot(struct Setting* setting, int argc, char** argv);
     void Exit();
     void Exit(int code);
-    int Boot(struct Setting* setting, int argc, char** argv);
     bool IsRunning();
     std::string GetAppExecutablePath();
     std::vector<std::string> GetCommandLine();

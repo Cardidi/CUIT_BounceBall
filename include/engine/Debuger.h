@@ -23,7 +23,10 @@ namespace Engine::Debug
         Warning = 4,
 
         // Serious thing that may cause application quit.
-        Error = 8
+        Error = 8,
+
+        All = 15,
+        None = 0
     };
 
     void SetDebugLevelMask(LogLevelMask mask);

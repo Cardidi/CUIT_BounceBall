@@ -2,8 +2,7 @@
 // Created by Cardi on 2022/5/3.
 //
 
-#include "glad/glad.h"
-#include "GLFW/glfw3.h"
+#include "engine/gl/GL.h"
 #include <stdexcept>
 #include "list"
 #include "sstream"
@@ -11,6 +10,8 @@
 #include "engine/Application.h"
 #include "engine/PlayerTime.h"
 #include "engine/PlayerLoop.h"
+#include "engine/gl/GLDrawBaseInternal.h"
+#include "engine/gl/GLDrawBase.h"
 #include "string"
 #include "utilities/nameof.hpp"
 
@@ -31,9 +32,9 @@ namespace Engine::PlayerTime
     double _scaleFactor, _pScaleFactor;
     FrameID _frame = 0;
 
-    void Init(double fixedDT, double dt)
+    void SetUpdateTime(double fixedDT, double dt)
     {
-        Debug::Log(LogLevel::Debug, "Init Player Time");
+        Debug::Log( "Set Player Updating Time");
 
         if (fixedDT <= 0)
             throw std::out_of_range("fixedDT should more than 0.0!");
@@ -47,7 +48,7 @@ namespace Engine::PlayerTime
         _scaleFactor = _pScaleFactor = 1.0f;
     }
 
-    static void ResetTimer()
+    static inline void ResetTimer()
     {
         _targetFrameTime = glfwGetTime();
         _currentFixedTime = _targetFrameTime;
@@ -58,12 +59,12 @@ namespace Engine::PlayerTime
         _updatingTime = 0;
     }
 
-    static void OnNewFrame()
+    static inline void OnNewFrame()
     {
         _scaleFactor = _pScaleFactor;
     }
 
-    inline double GetGameTimeFromStartup()
+    double GetGameTimeFromStartup()
     {
         return glfwGetTime();
     }
@@ -154,7 +155,7 @@ namespace Engine::PlayerLoop
         return true;
     }
 
-    void DoUpdateEvent(PlayerLoopTiming timing)
+    static inline void DoUpdateEvent(PlayerLoopTiming timing)
     {
         _timing = timing;
         for (PlayerLoopCallback callback : *_callback)
@@ -173,7 +174,7 @@ namespace Engine::PlayerLoop
         }
     }
 
-    void SingleFrameLoop()
+    static inline void SingleFrameLoop()
     {
         using Engine::PlayerLoop::PlayerLoopTiming;
         using Engine::PlayerTime::_fixedDeltaTime;
@@ -252,10 +253,16 @@ namespace Engine::Application
     bool running = false;
     bool _exitNextFrame = false;
     bool _exitCode = 0;
+    Setting* _setting;
     GLFWwindow* window;
 
     std::string appExecPath;
     std::vector<std::string> appComLin;
+
+    Setting& GetSetting()
+    {
+        return *_setting;
+    }
 
     void Exit()
     {
@@ -268,31 +275,11 @@ namespace Engine::Application
         _exitCode = code;
     }
 
-    void glUpdateCallback(PlayerLoop::PlayerLoopTiming timing)
-    {
-        if (timing == PlayerLoop::PlayerLoopTiming::NewFrame)
-        {
-            float delta = PlayerTime::GetTargetUpdateTimer() - (int) PlayerTime::GetTargetUpdateTimer();
-            glClearColor(delta, 0.0f, 0.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-        }
-
-        if (timing == PlayerLoop::PlayerLoopTiming::PRE_RenderUpdate)
-        {
-            glfwPollEvents();
-        }
-
-        if (timing == PlayerLoop::PlayerLoopTiming::BetweenFrame)
-        {
-            glfwSwapBuffers(window);
-        }
-    }
-
     int Boot(struct Setting* setting, int argc, char** argv)
     {
-        using Engine::Debug::Log;
-        using Engine::Debug::LogLevel;
-        Log("Engine Start");
+        using namespace Engine::Debug;
+        _setting = setting;
+        Log("-- Engine Start --");
 
         // Parse command line
         Log("Read Command Line");
@@ -308,68 +295,64 @@ namespace Engine::Application
             appComLin = std::vector<std::string>(0);
         }
 
-        // Initialize OpenGL
-        Log("Initialize GLFW");
-        glfwInit();
-
-        Log(LogLevel::Debug, "Initialize Window");
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        window = glfwCreateWindow
-                (setting->Window_Init_Width,setting->Window_Init_Height,
-                 setting->Window_Init_GameTitle.c_str(),NULL, NULL);
-        if (window == NULL)
+        try
         {
-            Log(LogLevel::Error, "Failed to create window!");
-            glfwTerminate();
-            return -1;
-        }
-        glfwMakeContextCurrent(window);
+            // Load Game Systems
+            Log("-- Initialize Subsystems --");
+            Engine::PlayerTime::SetUpdateTime(setting->Time_fixedDeltaTime, setting->Time_deltaTime);
+            Engine::GL::DrawBaseInternal::GLBaseInitial();
 
-        Log(LogLevel::Debug, "Initialize OpenGL Loader");
-        if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-        {
-            Log(LogLevel::Error, "Failed to initialize GLAD");
-            glfwTerminate();
-            return -1;
-        }
-        Engine::PlayerLoop::AddCallback(glUpdateCallback);
+            Log("Call Game Create Callback");
+            if (setting->CreateGameEvent != nullptr) setting->CreateGameEvent();
 
-        // Load Game Systems
-        Log("Initialize Game Subsystems");
-        Engine::PlayerTime::Init(setting->Time_fixedDeltaTime, setting->Time_deltaTime);
-
-        running = true;
-        Log("Call Game Create Callback");
-        if (setting->CreateGameEvent != nullptr) setting->CreateGameEvent();
-
-        Log("-- Start Render Loop --");
-
-        Engine::PlayerTime::ResetTimer();
-        double timeCounter = PlayerTime::GetGameTimeFromStartup();
-        int frameCounter = PlayerTime::GetCurrentFrameCount();
-        while (!glfwWindowShouldClose(window) && !_exitNextFrame)
-        {
-            Engine::PlayerLoop::SingleFrameLoop();
-            if (PlayerTime::GetGameTimeFromStartup() - timeCounter >= 1)
+            ///////////////////////////////////
+            Log("-- Start Render Loop --");
+            running = true;
+            Engine::PlayerTime::ResetTimer();
+            if (setting->Tool_FPSCounter)
             {
-                std::stringstream ss;
-                ss << "Frame " << PlayerTime::GetCurrentFrameCount() << " - FPS: " << PlayerTime::GetCurrentFrameCount() - frameCounter;
-                timeCounter = PlayerTime::GetGameTimeFromStartup();
-                frameCounter = PlayerTime::GetCurrentFrameCount();
-                Log(Debug::Debug, ss.str());
+                Log(Debug::Debug, "Enable FPS Counter Tool");
+                double timeCounter = PlayerTime::GetGameTimeFromStartup();
+                PlayerTime::FrameID frameCounter = PlayerTime::GetCurrentFrameCount();
+
+                while (!GL::DrawBase::ShouldCloseWindow() && !_exitNextFrame)
+                {
+                    Engine::PlayerLoop::SingleFrameLoop();
+                    if (PlayerTime::GetGameTimeFromStartup() - timeCounter >= 1)
+                    {
+                        std::stringstream ss;
+                        ss << "Frame " << PlayerTime::GetCurrentFrameCount() << " - FPS: " << PlayerTime::GetCurrentFrameCount() - frameCounter;
+                        timeCounter = PlayerTime::GetGameTimeFromStartup();
+                        frameCounter = PlayerTime::GetCurrentFrameCount();
+                        if (PlayerTime::GetSkipUpdateLastFrame()) ss << " (Some frames has skipped.)";
+                        Log(Debug::Debug, ss.str());
+                    }
+                }
             }
+            else
+            {
+                while (!GL::DrawBase::ShouldCloseWindow() && !_exitNextFrame)
+                {
+                    Engine::PlayerLoop::SingleFrameLoop();
+                }
+            }
+            Log("-- End Render Loop --");
+
+            ///////////////////////////////////
+            Log("Call Game Destroy Callback");
+            if (setting->DestroyGameEvent != nullptr) setting->DestroyGameEvent();
+        }
+        catch (std::exception& e)
+        {
+            std::stringstream ss;
+            ss << "Critical Error! " << e.what();
+            Debug::Log(Error, ss.str());
         }
 
-        Log("-- End Render Loop --");
+        Log("-- Terminate Subsystems --");
+        Engine::GL::DrawBaseInternal::GLBaseTerminate();
 
-        Log("Call Game Destroy Callback");
-        if (setting->DestroyGameEvent != nullptr) setting->DestroyGameEvent();
-
-        Log("Terminate GLFW");
-        Engine::PlayerLoop::RemoveCallback(glUpdateCallback);
-        glfwTerminate();
+        Log("-- Engine Close --");
         running = false;
         return _exitCode;
     }
